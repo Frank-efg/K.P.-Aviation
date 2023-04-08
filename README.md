@@ -14,6 +14,5 @@ Live air traffic:
 ![image](https://user-images.githubusercontent.com/130246494/230738116-2cab5e01-eb08-415a-aa02-575d6a6845b9.png)
 
 
-Computer Science NEA project 2023,
+Computer Science NEA project 2023
 
-K.P. Aviation
