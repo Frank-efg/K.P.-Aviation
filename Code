@@ -1,0 +1,533 @@
+from tkinter import * #Show login GUI
+from tkinter import messagebox #Give info pop ups
+import sys #System needed to force exit program
+import bcrypt as bc #Bcrypt to salt and hash password
+import shelve #Keeping a database
+import requests #Get web requests
+import math #Calculate Web Mercator coords
+import time #Create time pause
+import pandas as pd #Create dataframe
+import subprocess #Open and close windows
+from urllib3.exceptions import NewConnectionError #Handle connection errors
+import bokeh.io #Bokeh used for displaying data graphically
+from bokeh.plotting import figure, curdoc, output_file, show
+from bokeh.models import ColumnDataSource, HoverTool, LabelSet
+from bokeh.models.tools import PanTool, WheelZoomTool, ResetTool, HoverTool
+from playsound import playsound #Playsound to play user alerts
+
+
+#--------------------TERMINAL-----------------------
+
+print("\n","-"*25,"LIVE AIR TRAFFIC INFORMANT","-"*25)
+
+print("\nNOTE: CASE AND SPACE SENSITIVE\n") #If space or caps are wrong, hash and salt will be completly different
+
+
+#--------------------ACCOUNTS-----------------------
+
+api = shelve.open("User_db.v4", "c", writeback = True)#Open database
+api_as_dict = dict(api) #Create dictionary for database
+output_file('ATCKPA.html', title="ATC K.P. Aviation")  #HTML file output
+
+
+#--------------------BACKEND------------------------
+
+def hasher(plainPas): #Will salt and hash password for given unsernames in dictionary
+    salt = bc.gensalt()
+    hashed = bc.hashpw(str(plainPas).encode('utf8'), salt)
+    return hashed #Return hashed
+
+
+def checkPas(plainPas, user): #Check if passwords match in dictionary
+    return bc.checkpw(plainPas , api_as_dict.get(user, hasher(("none").encode('utf8'))))
+
+
+def byter(plainPas):
+    return plainPas.encode('utf8')
+
+
+def radar(entry3, entry4, top1): #Main radar program
+ try:
+   lat = entry3.get()
+   lon = entry4.get()
+   answer = messagebox.askyesno("CONFIRM NEW USER", "ARE YOU SURE?")
+
+   if answer == True:
+
+       if lat.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE LATITIUDE")
+
+       if lon.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE LONGITUDE")
+
+       if float(lat) > 90 or float(lat) < -90: #Stop invalid coordinates
+        messagebox.showerror("INVALID INPUT", "INVALID LATITIDUE COORDINATE")
+        
+       if float(lon) > 180 or float(lon) < -180:
+        messagebox.showerror("INVALID INPUT", "INVALID LONGITUDE COORDINATE")
+         
+       if len(str(lat)) < 5 or len(str(lon)) < 5: #Higher resolution needed for better coverage
+        messagebox.showerror("INVALID INPUT", "HIGHER RESOLUTION COORDINATES NEEDED")
+
+
+       else:
+           
+        def lat_to_web_mercator(lat): #Convert latitude to Web Mercator latitiude 
+            r_major = 6378137
+            return math.log(math.tan((90 + lat) * math.pi/360.0)) * r_major
+
+        def lon_to_web_mercator(lon): #Convert longitude to Web Mercator longitude
+            r_major = 6378137
+            return lon * (r_major * math.pi/180.0)
+
+
+        username = user
+        password = pas
+        url = 'https://opensky-network.org/api/states/all'
+
+        response = requests.get(url, auth=(username, password))
+
+        if response.status_code == 200: #Checking if data is sent correctly
+            data = response.json()['states']
+        else:
+            messagebox.showerror("ERROR",'COULD NOT GET DATA FROM OPENSKY API') #Checking if data sent is invalid
+            top1.destroy
+
+
+        def tracker():
+
+            columns = ['icao24', 'callsign', 'origin_country', 'time_position', 'last_contact', 'longitude', 'latitude', 'altitude', 'on_ground', 'velocity', 'heading', 'vertical_rate', 'sensors', 'geo_altitude', 'squawk', 'spi', 'position_source']
+            df = pd.DataFrame(data, columns=columns) #Create a dataframe with the colums used above and data from OpenSky
+            df = df.dropna(subset=['latitude', 'longitude', 'altitude', 'velocity'])
+
+            aircraft = { #Plot the data
+                'latitude': df['latitude'].apply(lat_to_web_mercator).tolist(), #Apply the lat_to_web_mercator() to covert to Web coords for latitiude
+                'longitude': df['longitude'].apply(lon_to_web_mercator).tolist(), #Apply the lon_to_web_mercator() to covert to Web coords for longitude
+                'altitude': df['altitude'].tolist(),
+                'velocity': df['velocity'].tolist(),
+                'heading': df['heading'].tolist(),
+                'callsign': df['callsign'].tolist(),
+                'icao24': df['icao24'].tolist(),
+                'origin_country': df['origin_country'].tolist(),
+            }
+            
+
+            #set BOKEH_RESOURCES=inline
+
+            #set BOKEH_DEV=false
+
+            #mode="inline"
+
+            # Create the figure
+            p = figure(title='Air Traffic Radar',x_axis_type='mercator', y_axis_type='mercator', sizing_mode='stretch_both', height=300, x_range = ([lon_to_web_mercator(float(lon)) - 200000,lon_to_web_mercator(float(lon)) + 200000]), y_range = ([lat_to_web_mercator(float(lat)) - 200000,lat_to_web_mercator(float(lat)) + 200000]), tools = [PanTool(), WheelZoomTool(), ResetTool()])
+            p.add_tile("Stamen Toner Background")
+
+            # Defining the X-Axis Label
+            p.xaxis.axis_label = "Longitude"
+            p.xgrid.grid_line_color = "white"
+             
+            # defining the Y-Axis Label
+            p.yaxis.axis_label = "Latitude"
+            p.ygrid.grid_line_color = "white"
+
+            # Define the data source
+            source = ColumnDataSource(aircraft)
+
+            #Radar position and area
+            radarShown = p.circle( y = lat_to_web_mercator(float(lat)), x = lon_to_web_mercator(float(lon)), fill_color="#023020", line_color="#FFFFFF", radius = 150000, fill_alpha=0.6, line_width=0.3, legend_label="CONTROLLED AIRSPACE")
+            radarShown.level='underlay'
+
+            # Define the plot circle glyphs
+            aircraft = p.circle(x='longitude', y='latitude', source=source, radius = 3500, color='#FF0000', alpha=0.5)
+
+            # Define the hover tool
+            my_hover=HoverTool()
+            my_hover.tooltips=[('Callsign','@callsign'),('Origin Country','@origin_country'),('ICAO24', '@icao24'),('Altitude(m)','@altitude')]
+
+            labels = LabelSet(x='x', y='y', text='callsign', level='glyph',
+                        x_offset=5, y_offset=5, source=source,background_fill_color='white',text_font_size="8pt")
+
+            p.add_tools(my_hover)
+            p.add_layout(labels)
+
+            curdoc().theme = "dark_minimal"
+            curdoc().title='Live Air Traffic Radar'
+            curdoc().add_root(p)
+            
+            while True: #Run until terminated or no connection
+                playsound(r"C:\\Users\student\Documents\Computer Science\Programming project\ADD PING.mp3")
+                show(p, new="window") #Show the data on a new window
+                playsound(r"C:\\Users\student\Documents\Computer Science\Programming project\ADD PING.mp3") #Initial scan ping
+                time.sleep(9) #Give ~5 second booting time
+                playsound(r"C:\\Users\student\Documents\Computer Science\Programming project\BASEPING.mp3")
+                subprocess.call("taskkill /f /im msedge.exe", shell=True) #file:///C:/Users/student/Documents/Computer%20Science/Programming%20project/ATCKPA.html displayed
+                playsound(r"C:\\Users\student\Documents\Computer Science\Programming project\BASEPING.mp3")  #Restart scan ping
+                print("\nLOADING NEW DATA...")
+
+        tracker()
+            
+   else:
+      top1.destroy
+
+ except ValueError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+ except TypeError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+ except TimeoutError or ConnectionError or NewConnectionError or RuntimeError: #If there are latency errors
+    messagebox.showerror("ERROR", "DICONNECTED")
+    top1.destroy
+
+ except NameError: #If account not verified with OpenSky
+    messagebox.showerror("ERROR", "ACCOUNT NOT AUTHENTICATED WITH OPENSKY")
+    top1.destroy
+
+
+def newusers(entry, entry2, entry3, top2): #Add new user to database
+  try: 
+   user = entry.get()
+   pas = entry2.get()
+   confirm_new = entry3.get()
+   answer = messagebox.askyesno("CONFIRM NEW USER", "ARE YOU SURE?")
+
+   if answer == True:
+       if user.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE USERNAME")
+
+
+       if pas.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE PASSWORD")
+
+
+       if confirm_new.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE CONFIRMED PASSWORD")
+
+       if pas != confirm_new:
+        messagebox.showerror("INVALID INPUT", "PASSWORD AND CONFIRMED PASSWORD MUST BE THE SAME") 
+
+       
+       if checkPas(byter(pas), user) != True and (user in api) != True and pas == confirm_new and user.strip() != '' and pas.strip() != '':
+        api[user] = hasher(pas)
+        api.sync() #Save changes to data
+        api_as_dict.update({user:hasher(pas)})
+        messagebox.showinfo("Added", ("USER",user,"HAS BEEN ADDED"))
+        top2.destroy
+
+       if checkPas(byter(pas), user) != True and (user in api) == True and pas == confirm_new and user.strip() != '' and pas.strip() != '':
+        messagebox.showerror("INVALID INPUT", "MUST BE NEW USERNAME OR PASSWORD")
+   else:
+      top2.destroy
+
+
+  except ValueError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+  except TypeError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+
+def deluser(delete, delete2, delete3, top3): #Add new user to database
+  try: 
+   user = delete.get()
+   pas = delete2.get()
+   confirm_old = delete3.get()
+   answer = messagebox.askyesno("CONFIRM DELETION OF USER", "ARE YOU SURE?")
+
+   if answer == True:
+       if user.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE USERNAME")
+
+
+       if pas.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE PASSWORD")
+
+
+       if confirm_old.strip() == '':
+        messagebox.showerror("INVALID INPUT", "MUST HAVE CONFIRMED PASSWORD")
+
+
+       if pas != confirm_old and (user.strip() or pas.strip() or confirm_old.strip()) != '':
+        messagebox.showerror("INVALID INPUT", "PASSWORD AND CONFIRMED PASSWORD MUST BE THE SAME") 
+
+       
+       if checkPas(byter(pas), user) == True and (user in api) == True and pas == confirm_old and user.strip() != '' and pas.strip() != '':
+        del api[user]
+        api.sync()#Save changes to data
+        api_as_dict.pop(user)
+        messagebox.showinfo("Deleted", ("USER",user,"HAS BEEN DELETED"))
+        top3.destroy
+
+       if checkPas(byter(pas), user) != True and (user in api) == True and pas == confirm_old and user.strip() != '' and pas.strip() != '':
+        messagebox.showerror("INVALID INPUT", "MUST BE USERNAME OR PASSWORD IN DATABASE")
+   else:
+      top3.destroy
+
+
+  except ValueError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+  except TypeError: #If value not accpetable, retry
+    messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+
+#---------------------------GUI------------------------------
+
+# Create the root window
+# with specified size and title
+root = Tk()
+root.resizable(False,False)
+root.title("KPA INFORMAT") 
+root.geometry('470x220+420+210')
+
+
+def radarGUI(): #radar gui
+
+    # Create widget
+    top1 = Toplevel(root, bg = "dark green")
+     
+    # Define title for window
+    top1.title("COORDINATE INSERTION")
+     
+    # specify size
+    top1.geometry('490x220+420+210')
+    top1.resizable(False,False)
+     
+    # Create label
+    label = Label(top1, text = "Latitiude", bg="black", fg="white")
+    label.place(x=15, y=60)
+
+    label2 = Label(top1, text = "Longitude", bg="black", fg="white")
+    label2.place(x=15, y=115)
+
+    image = PhotoImage(file="defgif.gif")
+    img1 = image.subsample(4, 4)
+    pic = Label(top1, image = img1)
+    pic.place(x=225, y=30)
+    
+    entry3 = Entry(top1, width = 20, bd = 3)
+    entry3.place(x=85, y=60)
+
+    entry4 = Entry(top1, width = 20, bd = 3)
+    entry4.place(x=85, y=115)
+
+    coord = Button(top1, text = "  Enter  ",
+                command = lambda: radar(entry3, entry4, top1))
+    coord.place(x = 85, y = 155)
+
+        # Create exit button.
+    button = Button(top1, text = " Exit ",
+                    command = top1.destroy)
+    button.place(x=160, y=155)
+
+    top1.grab_set()
+     
+    # Display until closed manually
+    top1.mainloop()
+
+
+
+
+def addGUI(): #Add user gui
+
+    top2 = Toplevel()
+     
+    top2.title("ADD USER")
+    top2.geometry('500x230+420+210')
+    top2.resizable(False,False)
+     
+    newuser = Label(top2, text = "New Username", bg="blue", fg="white")
+    newuser.place(x=20, y=25)
+    newpas = Label(top2, text = "New Password", bg="blue", fg="white")
+    newpas.place(x=20, y=80)
+    confirm = Label(top2, text = "Confirm Password", bg="blue", fg="white")
+    confirm.place(x=20, y=135)
+
+    entry = Entry(top2, width = 20, bd = 3)
+    entry.place(x=140, y=25)
+    entry2 = Entry(top2, width = 20, show = "*", bd = 3)
+    entry2.place(x=140, y=80)
+    entry3 = Entry(top2, width = 20, show = "*", bd = 3)
+    entry3.place(x=140, y=135)
+
+    image = PhotoImage(file="radar_small.png")
+    img1 = image.subsample(1, 1)
+    pic = Label(top2, image = img1)
+    pic.image = img1
+    pic.place(x=285, y=12)
+
+    added = Button(top2, text = " Add ",
+                    command = lambda: newusers(entry, entry2, entry3, top2))
+    added.place(x=70, y=175)
+
+    # Create exit button.
+    button = Button(top2, text = " Exit ",
+                    command = top2.destroy)
+    button.place(x=150, y=175)
+
+    top2.grab_set()
+
+
+
+
+def delGUI(): #Delete user gui
+
+    top3 = Toplevel()
+     
+    top3.title("DELETE USER")
+    top3.geometry('500x230+420+210')
+    top3.resizable(False,False)
+     
+    newuser = Label(top3, text = "Username", bg="red", fg="white")
+    newuser.place(x=20, y=25)
+    newpas = Label(top3, text = "Password", bg="red", fg="white")
+    newpas.place(x=20, y=80)
+    confirm = Label(top3, text = "Confirm Password", bg="red", fg="white")
+    confirm.place(x=20, y=135)
+
+    delete = Entry(top3, width = 20, bd = 3)
+    delete.place(x=140, y=25)
+    delete2 = Entry(top3, width = 20, show = "*", bd = 3)
+    delete2.place(x=140, y=80)
+    delete3 = Entry(top3, width = 20, show = "*", bd = 3)
+    delete3.place(x=140, y=135)
+
+    image = PhotoImage(file="radar_small.png")
+    img1 = image.subsample(1, 1)
+    pic = Label(top3, image = img1)
+    pic.image = img1
+    pic.place(x=285, y=9)
+
+    added = Button(top3, text = " Delete ",
+                    command = lambda: deluser(delete, delete2, delete3, top3))
+    added.place(x=70, y=175)
+
+    # Create exit button.
+    button = Button(top3, text = " Exit ",
+                    command = top3.destroy)
+    button.place(x=150, y=175)
+    
+    top3.grab_set()
+
+
+
+class KPAGUI():
+
+    def __init__(self, s1):
+
+        # Create label for root window
+        self.label1 = Label(s1, text = "Username", bg="dark blue", fg="white")
+        self.label1.place(x=20, y=55)
+        self.label2 = Label(s1, text = "Password", bg="dark blue", fg="white")
+        self.label2.place(x=20, y=110)
+
+        self.label3 = Label(s1, text = "Copyright 2023 K.P.A.", fg="black", font=("Courier", 9))
+        self.label3.place(x=10, y=190) #FPA Licence, SPDX
+
+        self.image = PhotoImage(file="radar_small.png")
+        self.img1 = self.image.subsample(1, 1)
+        self.img12 = Label(s1, image = self.img1)
+        self.img12.place(x=250, y=5)
+
+        self.entry = Entry(s1, width = 20, bd = 3)
+        self.entry.place(x=90, y=55)
+        self.entry2 = Entry(s1, width = 20, show = "*", bd = 3)
+        self.entry2.place(x=90, y=110)
+
+
+        #Create button to open inbetweener
+        self.button = Button(s1, text = " Submit ",
+                        command = lambda: self.userInputs(self.entry, self.entry2))
+        self.button.place(x = 95, y = 150)
+
+        self.exited = Button(s1, text = " Exit ",
+                        command = root.destroy)
+        self.exited.place(x=170, y=150)
+
+
+
+    def inbetween(self): #Give selection for user
+
+        top4 = Toplevel()
+        top4.title("SELECTION")
+        top4.geometry('250x140+530+230')
+        top4.resizable(False,False)
+
+        adduser = Button(top4, text = " Add User ", bg='blue', fg='white',
+                        command = addGUI)
+        adduser.pack(side = LEFT, padx = 20)
+
+        deluser = Button(top4, text = " Delete User ", bg='red', fg='white',
+                        command = delGUI)
+        deluser.pack(side = RIGHT, padx = 20)
+
+        cords = Button(top4, text = " COORDINATES ", bg='dark green', fg='white',
+                        command = radarGUI)
+        cords.place(x=73, y=20)
+
+        button = Button(top4, text = " Exit ",
+                        command = top4.destroy)
+        button.place(x=103, y=95)
+
+        top4.grab_set()
+
+    def counter(self):
+        global count
+        count += 1
+
+    def userInputs(self, entry, entry2):
+        global user
+        user = self.entry.get()
+        global pas
+        pas = self.entry2.get()
+
+    #3 attempts maximum
+        if count < 3:
+          try:
+              
+            if user.strip() == '':
+             messagebox.showerror("INVALID INPUT", "MUST HAVE USERNAME")
+
+
+            if pas.strip() == '':
+             messagebox.showerror("INVALID INPUT", "MUST HAVE PASSWORD")
+
+            
+            if (checkPas(byter(pas), user) != True or (user in api) != True) and (user.strip() != '' and pas.strip() != ''):
+             messagebox.showerror("INVALID INPUT", "NO ACCOUNT FOUND")
+             self.counter() #Adds 1 each time username or password is incorrect
+             messagebox.showwarning("INVALID INPUT",("ATTEMPTS LEFT: ", 3 - count))
+
+
+            if checkPas(byter(pas), user) == True and (user in api) == True and user.strip() != '' and pas.strip() != '':
+             playsound(r"C:\\Users\student\Documents\Computer Science\Programming project\NEW.mp3")
+             messagebox.showinfo("ACTIVATION", "RADAR ACTIVE")
+             self.inbetween()
+             #Once access authorised, allow them to change their personal data with newuser()
+             #Stops loop when username and password in list and together
+
+          except ValueError: #Will repeat until vaild username and password entered
+             messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+          except TypeError: #If value not accpetable, retry
+            messagebox.showerror("INVALID INPUT", "INVALID INPUT")
+
+
+        if count >= 3:
+            messagebox.showerror("INVALID INPUT", "ACCESS DENIED") #Deny access to program
+            sys.exit()
+
+
+
+
+count = 0 #intial tries = 3
+app = KPAGUI(root)
+root.mainloop()
+api.close()
