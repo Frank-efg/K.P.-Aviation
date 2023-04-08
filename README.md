@@ -9,7 +9,7 @@ Coordinate Insertion:
 
 ![image](https://user-images.githubusercontent.com/130246494/230737905-54ce5188-d606-4f14-bc3d-d4afe901b1d3.png)
 
-Live air traffic:
+Live Air Traffic:
 
 ![image](https://user-images.githubusercontent.com/130246494/230738116-2cab5e01-eb08-415a-aa02-575d6a6845b9.png)
 
