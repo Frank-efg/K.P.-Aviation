@@ -11,7 +11,7 @@ Coordinate Insertion:
 
 Live air traffic:
 
-![image](https://user-images.githubusercontent.com/130246494/230737956-4c77fd46-2060-43cb-ac7c-050b61523ac2.png)
+![image](https://user-images.githubusercontent.com/130246494/230738116-2cab5e01-eb08-415a-aa02-575d6a6845b9.png)
 
 
 Computer Science NEA project 2023,
