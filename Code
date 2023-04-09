@@ -25,7 +25,7 @@ print("\nNOTE: CASE AND SPACE SENSITIVE\n") #If space or caps are wrong, hash an
 
 #--------------------ACCOUNTS-----------------------
 
-api = shelve.open("User_db.v4", "c", writeback = True)#Open database
+api = shelve.open("KPA_db.v1", "c", writeback = True)#Open database
 api_as_dict = dict(api) #Create dictionary for database
 output_file('ATCKPA.html', title="ATC K.P. Aviation")  #HTML file output
 
@@ -45,6 +45,7 @@ def checkPas(plainPas, user): #Check if passwords match in dictionary
 def byter(plainPas):
     return plainPas.encode('utf8')
 
+#api["USERNAME"] = hasher("PASSWORD") #Developer account, stores username and password on system
 
 def radar(entry3, entry4, top1): #Main radar program
  try:
@@ -96,7 +97,9 @@ def radar(entry3, entry4, top1): #Main radar program
 
         def tracker():
 
-            columns = ['icao24', 'callsign', 'origin_country', 'time_position', 'last_contact', 'longitude', 'latitude', 'altitude', 'on_ground', 'velocity', 'heading', 'vertical_rate', 'sensors', 'geo_altitude', 'squawk', 'spi', 'position_source']
+            columns = ['icao24', 'callsign', 'origin_country', 'time_position', 'last_contact',
+                       'longitude', 'latitude', 'altitude', 'on_ground', 'velocity', 'heading',
+                       'vertical_rate', 'sensors', 'geo_altitude', 'squawk', 'spi', 'position_source']
             df = pd.DataFrame(data, columns=columns) #Create a dataframe with the colums used above and data from OpenSky
             df = df.dropna(subset=['latitude', 'longitude', 'altitude', 'velocity'])
 
@@ -119,7 +122,8 @@ def radar(entry3, entry4, top1): #Main radar program
             #mode="inline"
 
             # Create the figure
-            p = figure(title='Air Traffic Radar',x_axis_type='mercator', y_axis_type='mercator', sizing_mode='stretch_both', height=300, x_range = ([lon_to_web_mercator(float(lon)) - 200000,lon_to_web_mercator(float(lon)) + 200000]), y_range = ([lat_to_web_mercator(float(lat)) - 200000,lat_to_web_mercator(float(lat)) + 200000]), tools = [PanTool(), WheelZoomTool(), ResetTool()])
+            p = figure(title='Air Traffic Radar',x_axis_type='mercator', y_axis_type='mercator', sizing_mode='stretch_both', height=300, x_range = ([lon_to_web_mercator(float(lon)) - 200000,lon_to_web_mercator(float(lon)) + 200000]),
+                       y_range = ([lat_to_web_mercator(float(lat)) - 200000,lat_to_web_mercator(float(lat)) + 200000]), tools = [PanTool(), WheelZoomTool(), ResetTool()])
             p.add_tile("Stamen Toner Background")
 
             # Defining the X-Axis Label
@@ -134,7 +138,8 @@ def radar(entry3, entry4, top1): #Main radar program
             source = ColumnDataSource(aircraft)
 
             #Radar position and area
-            radarShown = p.circle( y = lat_to_web_mercator(float(lat)), x = lon_to_web_mercator(float(lon)), fill_color="#023020", line_color="#FFFFFF", radius = 150000, fill_alpha=0.6, line_width=0.3, legend_label="CONTROLLED AIRSPACE")
+            radarShown = p.circle( y = lat_to_web_mercator(float(lat)), x = lon_to_web_mercator(float(lon)), fill_color="#023020", line_color="#FFFFFF",
+                                   radius = 150000, fill_alpha=0.6, line_width=0.3, legend_label="CONTROLLED AIRSPACE")
             radarShown.level='underlay'
 
             # Define the plot circle glyphs
